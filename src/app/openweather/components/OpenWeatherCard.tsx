@@ -101,6 +101,8 @@ export default function OpenWeatherCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string>('');
+  const [cityInput, setCityInput] = useState<string>('');
+  const [isSearching, setIsSearching] = useState(false);
 
   // 从环境变量获取API Key
   useEffect(() => {
@@ -161,9 +163,60 @@ export default function OpenWeatherCard() {
     }
   };
 
+  // 搜索用户输入的城市
+  const searchCity = async (cityName: string) => {
+    if (!apiKey || !cityName.trim()) return;
+    
+    setIsSearching(true);
+    setError(null);
+    
+    try {
+      // 获取当前天气
+      const currentResponse = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${cityName.trim()}&appid=${apiKey}&units=metric&lang=zh_cn`
+      );
+
+      if (!currentResponse.ok) {
+        if (currentResponse.status === 404) {
+          throw new Error('找不到该城市，请检查城市名称是否正确');
+        }
+        throw new Error('获取天气数据失败');
+      }
+
+      const currentData = await currentResponse.json();
+
+      // 获取5天预报
+      const forecastResponse = await fetch(
+        `https://api.openweathermap.org/data/2.5/forecast?q=${cityName.trim()}&appid=${apiKey}&units=metric&lang=zh_cn`
+      );
+
+      if (!forecastResponse.ok) {
+        throw new Error('获取预报数据失败');
+      }
+
+      const forecastData = await forecastResponse.json();
+
+      setCurrentWeather(currentData);
+      setForecast(forecastData);
+      // 搜索成功后清空输入框
+      setCityInput('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const refreshWeather = () => {
     const randomCity = getRandomCity();
     fetchWeatherData(randomCity);
+  };
+
+  const handleCitySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cityInput.trim()) {
+      searchCity(cityInput);
+    }
   };
 
   useEffect(() => {
@@ -174,10 +227,61 @@ export default function OpenWeatherCard() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto bg-gradient-to-br from-orange-400 to-red-600 rounded-2xl p-8 shadow-xl">
-        <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-lg">正在获取天气数据...</p>
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* 搜索栏在加载时也显示 */}
+        <div className="bg-white rounded-2xl p-6 shadow-xl">
+          <div className="text-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">🔍 搜索城市天气</h3>
+            <p className="text-sm text-gray-600">
+              输入城市名称获取天气信息，支持中英文（如：北京、Tokyo、New York）
+            </p>
+          </div>
+          <form onSubmit={handleCitySearch} className="flex gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={cityInput}
+                onChange={(e) => setCityInput(e.target.value)}
+                placeholder="输入城市名称（如：北京、Tokyo、New York）"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                disabled={isSearching}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSearching || !cityInput.trim()}
+              className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            >
+              {isSearching ? '搜索中...' : '🔍 搜索'}
+            </button>
+          </form>
+          
+          {/* 快捷搜索按钮 */}
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 mb-2">🔥 热门城市：</p>
+            <div className="flex flex-wrap gap-2">
+              {['北京', 'Shanghai', 'Tokyo', 'New York', 'London', 'Paris', 'Sydney', 'Dubai'].map((city) => (
+                <button
+                  key={city}
+                  onClick={() => searchCity(city)}
+                  disabled={isSearching}
+                  className="bg-gray-100 hover:bg-orange-100 text-gray-700 px-3 py-1 rounded-full text-sm transition-colors disabled:opacity-50"
+                >
+                  {city}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        {/* 加载指示器 */}
+        <div className="bg-gradient-to-br from-orange-400 to-red-600 rounded-2xl p-8 shadow-xl">
+          <div className="text-center text-white">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-lg">
+              {isSearching ? '正在搜索城市天气...' : '正在获取天气数据...'}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -185,28 +289,87 @@ export default function OpenWeatherCard() {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto bg-gradient-to-br from-red-400 to-pink-600 rounded-2xl p-8 shadow-xl">
-        <div className="text-center text-white">
-          <div className="text-6xl mb-4">❌</div>
-          <p className="text-lg mb-4">获取天气数据失败</p>
-          <p className="text-sm opacity-80 mb-4">{error}</p>
-          {error.includes('API Key') && (
-            <div className="bg-white bg-opacity-20 rounded-lg p-4 mb-4">
-              <p className="text-sm">
-                请创建 <code className="bg-black bg-opacity-20 px-2 py-1 rounded">.env.local</code> 文件，
-                并添加：
-              </p>
-              <code className="block bg-black bg-opacity-20 px-4 py-2 rounded mt-2 text-sm">
-                NEXT_PUBLIC_OPENWEATHER_API_KEY=your_api_key_here
-              </code>
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* 搜索栏在错误时也显示 */}
+        <div className="bg-white rounded-2xl p-6 shadow-xl">
+          <div className="text-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">🔍 搜索城市天气</h3>
+            <p className="text-sm text-gray-600">
+              输入城市名称获取天气信息，支持中英文（如：北京、Tokyo、New York）
+            </p>
+          </div>
+          <form onSubmit={handleCitySearch} className="flex gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={cityInput}
+                onChange={(e) => setCityInput(e.target.value)}
+                placeholder="输入城市名称（如：北京、Tokyo、New York）"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                disabled={isSearching}
+              />
             </div>
-          )}
-          <button
-            onClick={refreshWeather}
-            className="bg-white text-red-500 px-6 py-2 rounded-full hover:bg-gray-100 transition-colors"
-          >
-            重试
-          </button>
+            <button
+              type="submit"
+              disabled={isSearching || !cityInput.trim()}
+              className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            >
+              {isSearching ? '搜索中...' : '🔍 搜索'}
+            </button>
+          </form>
+          
+          {/* 快捷搜索按钮 */}
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 mb-2">🔥 热门城市：</p>
+            <div className="flex flex-wrap gap-2">
+              {['北京', 'Shanghai', 'Tokyo', 'New York', 'London', 'Paris', 'Sydney', 'Dubai'].map((city) => (
+                <button
+                  key={city}
+                  onClick={() => searchCity(city)}
+                  disabled={isSearching}
+                  className="bg-gray-100 hover:bg-orange-100 text-gray-700 px-3 py-1 rounded-full text-sm transition-colors disabled:opacity-50"
+                >
+                  {city}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        {/* 错误信息 */}
+        <div className="bg-gradient-to-br from-red-400 to-pink-600 rounded-2xl p-8 shadow-xl">
+          <div className="text-center text-white">
+            <div className="text-6xl mb-4">❌</div>
+            <p className="text-lg mb-4">获取天气数据失败</p>
+            <p className="text-sm opacity-80 mb-4">{error}</p>
+            {error.includes('API Key') && (
+              <div className="bg-white bg-opacity-20 rounded-lg p-4 mb-4">
+                <p className="text-sm">
+                  请创建 <code className="bg-black bg-opacity-20 px-2 py-1 rounded">.env.local</code> 文件，
+                  并添加：
+                </p>
+                <code className="block bg-black bg-opacity-20 px-4 py-2 rounded mt-2 text-sm">
+                  NEXT_PUBLIC_OPENWEATHER_API_KEY=your_api_key_here
+                </code>
+              </div>
+            )}
+            <div className="space-x-4">
+              <button
+                onClick={refreshWeather}
+                className="bg-white text-red-500 px-6 py-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                随机重试
+              </button>
+              {cityInput && (
+                <button
+                  onClick={() => searchCity(cityInput)}
+                  className="bg-white bg-opacity-20 text-white px-6 py-2 rounded-full hover:bg-opacity-30 transition-colors"
+                >
+                  重新搜索
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -226,18 +389,68 @@ export default function OpenWeatherCard() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* 城市搜索栏 */}
+      <div className="bg-white rounded-2xl p-6 shadow-xl">
+        <div className="text-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">🔍 搜索城市天气</h3>
+          <p className="text-sm text-gray-600">
+            输入城市名称获取天气信息，支持中英文（如：北京、Tokyo、New York）
+          </p>
+        </div>
+        <form onSubmit={handleCitySearch} className="flex gap-4">
+          <div className="flex-1">
+            <input
+              type="text"
+              value={cityInput}
+              onChange={(e) => setCityInput(e.target.value)}
+              placeholder="输入城市名称（如：北京、Tokyo、New York）"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              disabled={isSearching}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isSearching || !cityInput.trim()}
+            className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+          >
+            {isSearching ? '搜索中...' : '🔍 搜索'}
+          </button>
+        </form>
+        
+        {/* 快捷搜索按钮 */}
+        <div className="mt-4">
+          <p className="text-sm text-gray-600 mb-2">🔥 热门城市：</p>
+          <div className="flex flex-wrap gap-2">
+            {['北京', 'Shanghai', 'Tokyo', 'New York', 'London', 'Paris', 'Sydney', 'Dubai'].map((city) => (
+              <button
+                key={city}
+                onClick={() => searchCity(city)}
+                disabled={isSearching}
+                className="bg-gray-100 hover:bg-orange-100 text-gray-700 px-3 py-1 rounded-full text-sm transition-colors disabled:opacity-50"
+              >
+                {city}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* 当前天气卡片 */}
       <div className="bg-gradient-to-br from-orange-400 to-red-600 rounded-2xl p-8 shadow-xl text-white">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* 左侧：主要天气信息 */}
           <div className="text-center md:text-left">
-            <div className="flex items-center justify-center md:justify-start mb-6">
-              <span className="text-4xl mr-3">{cityInfo.emoji}</span>
-              <div>
-                <h2 className="text-3xl font-bold">{currentWeather.name}</h2>
-                <p className="text-lg opacity-80">{currentWeather.sys.country}</p>
-              </div>
-            </div>
+                         <div className="flex items-center justify-center md:justify-start mb-6">
+               <span className="text-4xl mr-3">{cityInfo.emoji}</span>
+               <div>
+                 <h2 className="text-3xl font-bold">{currentWeather.name}</h2>
+                 <p className="text-lg opacity-80">{currentWeather.sys.country}</p>
+                 <div className="flex items-center text-sm opacity-70 mt-1">
+                   <span className="mr-2">📍</span>
+                   <span>坐标: {currentWeather.coord.lat.toFixed(2)}, {currentWeather.coord.lon.toFixed(2)}</span>
+                 </div>
+               </div>
+             </div>
 
             <div className="flex items-center justify-center md:justify-start mb-6">
               <img 
@@ -301,13 +514,19 @@ export default function OpenWeatherCard() {
           </div>
         </div>
 
-        {/* 刷新按钮 */}
+        {/* 操作按钮 */}
         <div className="text-center mt-8">
           <button
             onClick={refreshWeather}
-            className="bg-white text-orange-600 px-8 py-3 rounded-full hover:bg-gray-100 transition-colors font-semibold shadow-lg"
+            className="bg-white text-orange-600 px-6 py-3 rounded-full hover:bg-gray-100 transition-colors font-semibold shadow-lg mr-4"
           >
-            🎲 随机换个城市
+            🎲 随机城市
+          </button>
+          <button
+            onClick={() => setCityInput('')}
+            className="bg-white bg-opacity-20 text-white px-6 py-3 rounded-full hover:bg-opacity-30 transition-colors font-semibold"
+          >
+            🔄 清空搜索
           </button>
         </div>
       </div>
